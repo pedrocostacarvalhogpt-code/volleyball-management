@@ -1,0 +1,9 @@
+{
+  "name": "Volleyball Club",
+  "short_name": "VolleyClub",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f5f7fb",
+  "theme_color": "#112a4a",
+  "lang": "pt"
+}
