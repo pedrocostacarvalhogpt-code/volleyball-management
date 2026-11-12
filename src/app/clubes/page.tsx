@@ -44,7 +44,7 @@ export default function ClubsPage(){
   catch(e){setMessage(e instanceof Error?e.message:"Erro inesperado.")}
   finally{setBusy(false)}
  }
- return <main><a href="/">Voltar</a><h1>Clubes e equipas</h1>
+ return <main><a href="/">Voltar</a><h1>Clubes e equipas</h1><p><a href="/membros">Gerir membros e funções das equipas</a></p>
   <div className="card"><h2>Os meus clubes</h2><label htmlFor="club">Selecionar clube</label>
   <select id="club" value={clubId} onChange={e=>{setClubId(e.target.value);setSeasonId("")}}><option value="">Seleciona...</option>{clubs.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select>
   <h3>Criar clube</h3><form onSubmit={e=>{e.preventDefault();void act(async()=>{const r=await supabase.rpc("create_club",{p_name:clubName.trim()});if(!r.error){setClubName("");if(r.data)setClubId(r.data)}return r})}}>
