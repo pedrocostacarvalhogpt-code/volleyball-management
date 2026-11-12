@@ -38,7 +38,7 @@ export default function ClubsPage(){
  useEffect(()=>{void load()},[]);
  const currentSeasons=seasons.filter(s=>s.club_id===clubId);
  const admin=members.some(m=>m.club_id===clubId&&m.user_id===userId&&m.role==="admin");
- async function act(fn:()=>Promise<{error?:{message:string}|null}>){
+ async function act(fn:()=>PromiseLike<{error?:{message:string}|null}>){
   setBusy(true);setMessage("");
   try{const r=await fn();if(r.error) setMessage(r.error.message);else{setMessage("Alterações guardadas.");await load()}}
   catch(e){setMessage(e instanceof Error?e.message:"Erro inesperado.")}
