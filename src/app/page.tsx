@@ -4,6 +4,7 @@ import {supabase} from "@/lib/supabase";
 import type {User} from "@supabase/supabase-js";
 export default function Home(){
  const [user,setUser]=useState<User|null>(null);
+ const [superAdmin,setSuperAdmin]=useState(false);
  const [email,setEmail]=useState("");
  const [password,setPassword]=useState("");
  const [message,setMessage]=useState("");
@@ -14,6 +15,12 @@ export default function Home(){
   const {data:{subscription}}=supabase.auth.onAuthStateChange((_event,session)=>setUser(session?.user??null));
   return ()=>subscription.unsubscribe();
  },[]);
+ useEffect(()=>{
+  let active=true;
+  if(!user){setSuperAdmin(false);return;}
+  void supabase.from("platform_admins").select("user_id").eq("user_id",user.id).maybeSingle().then(({data,error})=>{if(active)setSuperAdmin(!error&&!!data)});
+  return ()=>{active=false};
+ },[user?.id]);
  async function login(signup:boolean){
   setMessage("");
   const normalizedEmail=email.trim();
@@ -31,6 +38,6 @@ export default function Home(){
   }catch{setMessage("Não foi possível contactar o serviço de autenticação.");}
   finally{setSubmitting(false);}
  }
- return <><header><h1>Volleyball Club</h1>{user&&<nav><a href="/">Início</a><a href="/agenda">Minha agenda</a><a href="/wellness">Wellness</a><a href="/clubes">Clubes</a></nav>}</header>
+ return <><header><h1>Volleyball Club</h1>{user&&<nav><a href="/">Início</a><a href="/agenda">Minha agenda</a><a href="/wellness">Wellness</a><a href="/clubes">Clubes</a>{superAdmin&&<a href="/admin">Administração</a>}</nav>}</header>
  <main>{loading?<p>A carregar...</p>:user?<><div className="card"><h2>Bem-vindo</h2><p>{user.email}</p><button onClick={()=>supabase.auth.signOut()}>Terminar sessão</button></div><div className="grid"><div className="card"><h3>Clubes e equipas</h3><p>Cria clubes, épocas e equipas.</p><a href="/clubes">Gerir clubes</a></div><div className="card"><h3>Agenda pessoal</h3><p>Consulta apenas sessões para as quais foste selecionado.</p><a href="/agenda">Abrir agenda</a></div><div className="card"><h3>Wellness</h3><p>Regista o teu estado de manhã e à noite.</p><a href="/wellness">Responder</a></div></div></>:<div className="card"><h2>Entrar ou criar conta</h2><form onSubmit={e=>{e.preventDefault();void login(false)}}><label htmlFor="email">Email</label><input id="email" type="email" autoComplete="email" required value={email} onChange={e=>setEmail(e.target.value)}/><label htmlFor="password">Palavra-passe</label><input id="password" type="password" autoComplete="current-password" required value={password} onChange={e=>setPassword(e.target.value)}/><p><button disabled={submitting} type="submit">Entrar</button> <button disabled={submitting} type="button" onClick={()=>void login(true)}>Registar</button></p></form>{message&&<p role="status">{message}</p>}</div>}</main></>;
 }
