@@ -7,6 +7,10 @@ export default function TrainingPage(){
  const [teams,setTeams]=useState<Team[]>([]),[teamId,setTeamId]=useState("");
  const [athletes,setAthletes]=useState<Athlete[]>([]),[selected,setSelected]=useState<string[]>([]);
  const [title,setTitle]=useState("Treino"),[start,setStart]=useState(""),[end,setEnd]=useState(""),[location,setLocation]=useState("");
+ const [sessions,setSessions]=useState<{id:string;title:string;starts_at:string;ends_at:string;location:string|null;status:string}[]>([]);
+ const [sessionError,setSessionError]=useState("");
+ const [revision,setRevision]=useState(0);
+ useEffect(()=>{let active=true;async function loadSessions(){ const r=await supabase.from("training_sessions").select("id,title,starts_at,ends_at,location,status").order("starts_at",{ascending:false}).limit(50);if(!active)return;setSessions(r.data??[]);setSessionError(r.error?.message??""); }void loadSessions();return()=>{active=false}},[revision]);
  const [message,setMessage]=useState("A carregar equipas..."),[ready,setReady]=useState(false),[busy,setBusy]=useState(false);
  useEffect(()=>{let active=true;async function load(){
  const {data:{user}}=await supabase.auth.getUser();
@@ -52,7 +56,7 @@ export default function TrainingPage(){
  try{
  const r=await supabase.rpc("create_training_session",{p_team_id:teamId,p_title:title.trim(),p_starts_at:a.toISOString(),p_ends_at:b.toISOString(),p_location:location.trim()||null,p_participants:selected});
  if(r.error){setMessage(r.error.message);return}
- setMessage("Treino criado com "+selected.length+" participantes.");setStart("");setEnd("");setSelected([]);
+ setRevision(v=>v+1);setMessage("Treino criado com "+selected.length+" participantes.");setStart("");setEnd("");setSelected([]);
  }catch(e){setMessage(e instanceof Error?e.message:"Erro inesperado.")}finally{setBusy(false)}
  }
  return <main><a href="/clubes">Clubes e equipas</a><h1>Criar treino</h1><form className="card" onSubmit={e=>{e.preventDefault();void save()}}>
@@ -64,5 +68,5 @@ export default function TrainingPage(){
  <h2>Participantes ({selected.length})</h2><p>Atletas do mesmo clube e época. Apenas os selecionados serão inscritos.</p>
  {ready&&!athletes.length&&<p>Não existem atletas disponíveis.</p>}
  {athletes.map(a=><p key={a.id}><label><input type="checkbox" checked={selected.includes(a.id)} onChange={e=>setSelected(s=>e.target.checked?[...s,a.id]:s.filter(id=>id!==a.id))}/>{a.full_name||"Atleta "+a.id.slice(0,8)}</label></p>)}
- <button type="submit" disabled={!ready||busy}>Criar treino</button></fieldset></form><p role="status">{message}</p></main>
+ <button type="submit" disabled={!ready||busy}>Criar treino</button></fieldset></form><p role="status">{message}</p><section className="card"><h2>Os meus treinos atribuídos</h2><p>Últimas 50 sessões em que estás inscrito.</p>{sessionError?<p role="alert">{sessionError}</p>:sessions.length===0?<p>Sem sessões atribuídas.</p>:<ul>{sessions.map(s=><li key={s.id}><strong>{s.title}</strong> — {new Date(s.starts_at).toLocaleString("pt-PT")} até {new Date(s.ends_at).toLocaleString("pt-PT")}{s.location?" · "+s.location:""} · {s.status}</li>)}</ul>}</section></main>
 }
