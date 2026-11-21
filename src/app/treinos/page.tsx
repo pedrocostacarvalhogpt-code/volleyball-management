@@ -9,7 +9,7 @@ export default function TrainingPage(){
  const [athletes,setAthletes]=useState<Athlete[]>([]),[selected,setSelected]=useState<string[]>([]);
  const [title,setTitle]=useState("Treino"),[start,setStart]=useState(""),[end,setEnd]=useState(""),[location,setLocation]=useState("");
  const [sessions,setSessions]=useState<Session[]>([]);
- const [participantIds,setParticipantIds]=useState<string[]>([]);
+ const [participation,setParticipation]=useState<Record<string,{confirmation_status:string|null;attendance_status:string|null}>>({});
  const [sessionLoading,setSessionLoading]=useState(true);
  const [sessionError,setSessionError]=useState("");
  const [revision,setRevision]=useState(0);
@@ -17,20 +17,20 @@ export default function TrainingPage(){
  setSessionLoading(true);
  const {data:{user},error:authError}=await supabase.auth.getUser();
  if(!active)return;
- if(authError||!user){setSessions([]);setParticipantIds([]);setSessionError(authError?.message??"Inicia sessão para consultar os treinos.");setSessionLoading(false);return}
+ if(authError||!user){setSessions([]);setParticipation({});setSessionError(authError?.message??"Inicia sessão para consultar os treinos.");setSessionLoading(false);return}
  const [r,p]=await Promise.all([
   supabase.from("training_sessions").select("id,team_id,title,starts_at,ends_at,location,status").order("starts_at",{ascending:false}).limit(100),
-  supabase.from("training_session_participants").select("session_id").eq("user_id",user.id)
+  supabase.from("training_session_participants").select("session_id,confirmation_status,attendance_status").eq("user_id",user.id)
  ]);
  if(!active)return;
  setSessions(r.data??[]);
- setParticipantIds((p.data??[]).map(x=>x.session_id));
+ setParticipation(Object.fromEntries((p.data??[]).map(x=>[x.session_id,{confirmation_status:x.confirmation_status,attendance_status:x.attendance_status}])));
  setSessionError(r.error?.message??p.error?.message??"");
  setSessionLoading(false);
  }void loadSessions();return()=>{active=false}},[revision]);
- const renderSession=(s:Session)=><li key={s.id}><strong>{s.title}</strong> — {new Date(s.starts_at).toLocaleString("pt-PT")} até {new Date(s.ends_at).toLocaleString("pt-PT")}{s.location?" · "+s.location:""} · {s.status}</li>;
+ const renderSession=(s:Session)=><li key={s.id}><strong>{s.title}</strong> — {new Date(s.starts_at).toLocaleString("pt-PT")} até {new Date(s.ends_at).toLocaleString("pt-PT")}{s.location?" · "+s.location:""} · {s.status}{participation[s.id]&&<span> · Confirmação: {participation[s.id].confirmation_status??"Pendente"} · Presença: {participation[s.id].attendance_status??"Por registar"}</span>}</li>;
  const coachedSessions=sessions.filter(s=>teams.some(t=>t.id===s.team_id));
- const assignedSessions=sessions.filter(s=>participantIds.includes(s.id));
+ const assignedSessions=sessions.filter(s=>Object.prototype.hasOwnProperty.call(participation,s.id));
  const [message,setMessage]=useState("A carregar equipas..."),[ready,setReady]=useState(false),[busy,setBusy]=useState(false);
  useEffect(()=>{let active=true;async function load(){
  const {data:{user}}=await supabase.auth.getUser();
