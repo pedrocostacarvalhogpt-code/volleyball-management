@@ -3,14 +3,34 @@ import {useEffect,useState} from "react";
 import {supabase} from "@/lib/supabase";
 type Team={id:string;name:string;club_id:string;season_id:string};
 type Athlete={id:string;full_name:string|null};
+type Session={id:string;team_id:string;title:string;starts_at:string;ends_at:string;location:string|null;status:string};
 export default function TrainingPage(){
  const [teams,setTeams]=useState<Team[]>([]),[teamId,setTeamId]=useState("");
  const [athletes,setAthletes]=useState<Athlete[]>([]),[selected,setSelected]=useState<string[]>([]);
  const [title,setTitle]=useState("Treino"),[start,setStart]=useState(""),[end,setEnd]=useState(""),[location,setLocation]=useState("");
- const [sessions,setSessions]=useState<{id:string;title:string;starts_at:string;ends_at:string;location:string|null;status:string}[]>([]);
+ const [sessions,setSessions]=useState<Session[]>([]);
+ const [participantIds,setParticipantIds]=useState<string[]>([]);
+ const [sessionLoading,setSessionLoading]=useState(true);
  const [sessionError,setSessionError]=useState("");
  const [revision,setRevision]=useState(0);
- useEffect(()=>{let active=true;async function loadSessions(){ const r=await supabase.from("training_sessions").select("id,title,starts_at,ends_at,location,status").order("starts_at",{ascending:false}).limit(50);if(!active)return;setSessions(r.data??[]);setSessionError(r.error?.message??""); }void loadSessions();return()=>{active=false}},[revision]);
+ useEffect(()=>{let active=true;async function loadSessions(){
+ setSessionLoading(true);
+ const {data:{user},error:authError}=await supabase.auth.getUser();
+ if(!active)return;
+ if(authError||!user){setSessions([]);setParticipantIds([]);setSessionError(authError?.message??"Inicia sessão para consultar os treinos.");setSessionLoading(false);return}
+ const [r,p]=await Promise.all([
+  supabase.from("training_sessions").select("id,team_id,title,starts_at,ends_at,location,status").order("starts_at",{ascending:false}).limit(100),
+  supabase.from("training_session_participants").select("session_id").eq("user_id",user.id)
+ ]);
+ if(!active)return;
+ setSessions(r.data??[]);
+ setParticipantIds((p.data??[]).map(x=>x.session_id));
+ setSessionError(r.error?.message??p.error?.message??"");
+ setSessionLoading(false);
+ }void loadSessions();return()=>{active=false}},[revision]);
+ const renderSession=(s:Session)=><li key={s.id}><strong>{s.title}</strong> — {new Date(s.starts_at).toLocaleString("pt-PT")} até {new Date(s.ends_at).toLocaleString("pt-PT")}{s.location?" · "+s.location:""} · {s.status}</li>;
+ const coachedSessions=sessions.filter(s=>teams.some(t=>t.id===s.team_id));
+ const assignedSessions=sessions.filter(s=>participantIds.includes(s.id));
  const [message,setMessage]=useState("A carregar equipas..."),[ready,setReady]=useState(false),[busy,setBusy]=useState(false);
  useEffect(()=>{let active=true;async function load(){
  const {data:{user}}=await supabase.auth.getUser();
@@ -68,5 +88,5 @@ export default function TrainingPage(){
  <h2>Participantes ({selected.length})</h2><p>Atletas do mesmo clube e época. Apenas os selecionados serão inscritos.</p>
  {ready&&!athletes.length&&<p>Não existem atletas disponíveis.</p>}
  {athletes.map(a=><p key={a.id}><label><input type="checkbox" checked={selected.includes(a.id)} onChange={e=>setSelected(s=>e.target.checked?[...s,a.id]:s.filter(id=>id!==a.id))}/>{a.full_name||"Atleta "+a.id.slice(0,8)}</label></p>)}
- <button type="submit" disabled={!ready||busy}>Criar treino</button></fieldset></form><p role="status">{message}</p><section className="card"><h2>Os meus treinos atribuídos</h2><p>Últimas 50 sessões em que estás inscrito.</p>{sessionError?<p role="alert">{sessionError}</p>:sessions.length===0?<p>Sem sessões atribuídas.</p>:<ul>{sessions.map(s=><li key={s.id}><strong>{s.title}</strong> — {new Date(s.starts_at).toLocaleString("pt-PT")} até {new Date(s.ends_at).toLocaleString("pt-PT")}{s.location?" · "+s.location:""} · {s.status}</li>)}</ul>}</section></main>
+ <button type="submit" disabled={!ready||busy}>Criar treino</button></fieldset></form><p role="status">{message}</p><section className="card"><h2>Os meus treinos atribuídos</h2><p>Sessões em que participas como atleta, mesmo que também sejas treinador.</p>{sessionError?<p role="alert">{sessionError}</p>:sessionLoading?<p>A carregar sessões...</p>:assignedSessions.length===0?<p>Sem sessões atribuídas.</p>:<ul>{assignedSessions.map(renderSession)}</ul>}</section><section className="card"><h2>Treinos das minhas equipas</h2><p>Sessões das equipas em que és treinador. Um treino pode aparecer nas duas listas quando também participas como atleta.</p>{sessionError?<p role="alert">{sessionError}</p>:sessionLoading?<p>A carregar sessões...</p>:coachedSessions.length===0?<p>Sem sessões das tuas equipas.</p>:<ul>{coachedSessions.map(renderSession)}</ul>}</section></main>
 }
