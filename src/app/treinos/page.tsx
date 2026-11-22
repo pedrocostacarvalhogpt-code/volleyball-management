@@ -10,6 +10,43 @@ export default function TrainingPage(){
  const [title,setTitle]=useState("Treino"),[start,setStart]=useState(""),[end,setEnd]=useState(""),[location,setLocation]=useState("");
  const [sessions,setSessions]=useState<Session[]>([]);
  const [participation,setParticipation]=useState<Record<string,{confirmation_status:string|null;attendance_status:string|null}>>({});
+ const [attendanceSession,setAttendanceSession]=useState<string|null>(null);
+ const [roster,setRoster]=useState<{user_id:string;attendance_status:string|null;name:string}[]>([]);
+ const [rosterError,setRosterError]=useState("");
+ const [rosterLoading,setRosterLoading]=useState(false);
+ const [attendanceBusy,setAttendanceBusy]=useState<string|null>(null);
+ async function openRoster(sessionId:string){
+  if(attendanceSession===sessionId){setAttendanceSession(null);return}
+  setAttendanceSession(sessionId);setRoster([]);setRosterError("");setRosterLoading(true);
+  const result=await supabase.from("training_session_participants").select("user_id,attendance_status").eq("session_id",sessionId);
+  if(result.error){setRosterError(result.error.message);setRosterLoading(false);return}
+  const participants=result.data??[];
+  const profiles=participants.length?await supabase.from("profiles").select("id,full_name").in("id",participants.map(p=>p.user_id)):null;
+  const names=new Map((profiles?.data??[]).map(p=>[p.id,p.full_name]));
+  setRoster(participants.map(p=>({user_id:p.user_id,attendance_status:p.attendance_status,name:names.get(p.user_id)||"Atleta "+p.user_id.slice(0,8)})));
+  if(profiles?.error)setRosterError("Não foi possível obter alguns nomes: "+profiles.error.message);
+  setRosterLoading(false);
+ }
+ async function markAttendance(sessionId:string,userId:string,status:string){
+  setAttendanceBusy(userId);setRosterError("");
+  const result=await supabase.rpc("record_training_attendance",{p_session_id:sessionId,p_user_id:userId,p_attendance_status:status});
+  if(result.error)setRosterError(result.error.message);
+  else {setRoster(rows=>rows.map(p=>p.user_id===userId?{...p,attendance_status:status}:p));setRevision(v=>v+1)}
+  setAttendanceBusy(null);
+ }
+ const renderCoachedSession=(s:Session)=><li key={s.id}>
+  <strong>{s.title}</strong> — {new Date(s.starts_at).toLocaleString("pt-PT")}
+  <button type="button" onClick={()=>void openRoster(s.id)} aria-expanded={attendanceSession===s.id}> {attendanceSession===s.id?"Fechar participantes":"Gerir presenças"}</button>
+  {attendanceSession===s.id&&<div>{rosterLoading?<p>A carregar participantes...</p>:<>
+   {rosterError&&<p role="alert">{rosterError}</p>}
+   {!roster.length?<p>Sem participantes inscritos ou sem acesso à lista.</p>:<ul>{roster.map(p=><li key={p.user_id}>
+    {p.name} — {p.attendance_status??"Por registar"}{" "}
+    <select aria-label={"Presença de "+p.name} value={p.attendance_status??""} disabled={attendanceBusy!==null} onChange={e=>{if(e.target.value)void markAttendance(s.id,p.user_id,e.target.value)}}>
+     <option value="">Por registar</option><option value="present">Presente</option><option value="absent">Ausente</option><option value="excused">Falta justificada</option>
+    </select>
+   </li>)}</ul>}
+  </>}</div>}
+ </li>;
  const [sessionLoading,setSessionLoading]=useState(true);
  const [sessionError,setSessionError]=useState("");
  const [revision,setRevision]=useState(0);
@@ -88,5 +125,5 @@ export default function TrainingPage(){
  <h2>Participantes ({selected.length})</h2><p>Atletas do mesmo clube e época. Apenas os selecionados serão inscritos.</p>
  {ready&&!athletes.length&&<p>Não existem atletas disponíveis.</p>}
  {athletes.map(a=><p key={a.id}><label><input type="checkbox" checked={selected.includes(a.id)} onChange={e=>setSelected(s=>e.target.checked?[...s,a.id]:s.filter(id=>id!==a.id))}/>{a.full_name||"Atleta "+a.id.slice(0,8)}</label></p>)}
- <button type="submit" disabled={!ready||busy}>Criar treino</button></fieldset></form><p role="status">{message}</p><section className="card"><h2>Os meus treinos atribuídos</h2><p>Sessões em que participas como atleta, mesmo que também sejas treinador.</p>{sessionError?<p role="alert">{sessionError}</p>:sessionLoading?<p>A carregar sessões...</p>:assignedSessions.length===0?<p>Sem sessões atribuídas.</p>:<ul>{assignedSessions.map(renderSession)}</ul>}</section><section className="card"><h2>Treinos das minhas equipas</h2><p>Sessões das equipas em que és treinador. Um treino pode aparecer nas duas listas quando também participas como atleta.</p>{sessionError?<p role="alert">{sessionError}</p>:sessionLoading?<p>A carregar sessões...</p>:coachedSessions.length===0?<p>Sem sessões das tuas equipas.</p>:<ul>{coachedSessions.map(renderSession)}</ul>}</section></main>
+ <button type="submit" disabled={!ready||busy}>Criar treino</button></fieldset></form><p role="status">{message}</p><section className="card"><h2>Os meus treinos atribuídos</h2><p>Sessões em que participas como atleta, mesmo que também sejas treinador.</p>{sessionError?<p role="alert">{sessionError}</p>:sessionLoading?<p>A carregar sessões...</p>:assignedSessions.length===0?<p>Sem sessões atribuídas.</p>:<ul>{assignedSessions.map(renderSession)}</ul>}</section><section className="card"><h2>Treinos das minhas equipas</h2><p>Sessões das equipas em que és treinador. Um treino pode aparecer nas duas listas quando também participas como atleta.</p>{sessionError?<p role="alert">{sessionError}</p>:sessionLoading?<p>A carregar sessões...</p>:coachedSessions.length===0?<p>Sem sessões das tuas equipas.</p>:<ul>{coachedSessions.map(renderCoachedSession)}</ul>}</section></main>
 }
