@@ -65,7 +65,26 @@ export default function TrainingPage(){
  setSessionError(r.error?.message??p.error?.message??"");
  setSessionLoading(false);
  }void loadSessions();return()=>{active=false}},[revision]);
- const renderSession=(s:Session)=><li key={s.id}><strong>{s.title}</strong> — {new Date(s.starts_at).toLocaleString("pt-PT")} até {new Date(s.ends_at).toLocaleString("pt-PT")}{s.location?" · "+s.location:""} · {s.status}{participation[s.id]&&<span> · Confirmação: {participation[s.id].confirmation_status??"Pendente"} · Presença: {participation[s.id].attendance_status??"Por registar"}</span>}</li>;
+ const [confirmationBusy,setConfirmationBusy]=useState<string|null>(null);
+ const [confirmationFeedback,setConfirmationFeedback]=useState<Record<string,string>>({});
+ async function confirmParticipation(sessionId:string,status:"confirmed"|"declined"){
+  if(confirmationBusy!==null)return;
+  setConfirmationBusy(sessionId);
+  setConfirmationFeedback(prev=>({...prev,[sessionId]:""}));
+  try{
+   const result=await supabase.rpc("confirm_training_participation",{p_session_id:sessionId,p_confirmation_status:status});
+   if(result.error)throw new Error(result.error.message);
+   setParticipation(prev=>prev[sessionId]?{...prev,[sessionId]:{...prev[sessionId],confirmation_status:status}}:prev);
+   setConfirmationFeedback(prev=>({...prev,[sessionId]:"Resposta registada."}));
+   setRevision(v=>v+1);
+  }catch(e){setConfirmationFeedback(prev=>({...prev,[sessionId]:e instanceof Error?e.message:"Não foi possível registar a resposta."}));}
+  finally{setConfirmationBusy(null);}
+ }
+ const renderSession=(s:Session)=><li key={s.id}><strong>{s.title}</strong> — {new Date(s.starts_at).toLocaleString("pt-PT")} até {new Date(s.ends_at).toLocaleString("pt-PT")}{s.location?" · "+s.location:""} · {s.status}{participation[s.id]&&<span> · Confirmação: {participation[s.id].confirmation_status??"Pendente"} · Presença: {participation[s.id].attendance_status??"Por registar"}</span>}{participation[s.id]&&<div>
+  <button type="button" disabled={confirmationBusy!==null||participation[s.id].confirmation_status==="confirmed"} onClick={()=>void confirmParticipation(s.id,"confirmed")}>Confirmar participação</button>{" "}
+  <button type="button" disabled={confirmationBusy!==null||participation[s.id].confirmation_status==="declined"} onClick={()=>void confirmParticipation(s.id,"declined")}>Não vou participar</button>
+  {confirmationFeedback[s.id]&&<p role="status">{confirmationFeedback[s.id]}</p>}
+ </div>}</li>;
  const coachedSessions=sessions.filter(s=>teams.some(t=>t.id===s.team_id));
  const assignedSessions=sessions.filter(s=>Object.prototype.hasOwnProperty.call(participation,s.id));
  const [message,setMessage]=useState("A carregar equipas..."),[ready,setReady]=useState(false),[busy,setBusy]=useState(false);
