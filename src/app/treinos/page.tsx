@@ -11,19 +11,19 @@ export default function TrainingPage(){
  const [sessions,setSessions]=useState<Session[]>([]);
  const [participation,setParticipation]=useState<Record<string,{confirmation_status:string|null;attendance_status:string|null}>>({});
  const [attendanceSession,setAttendanceSession]=useState<string|null>(null);
- const [roster,setRoster]=useState<{user_id:string;attendance_status:string|null;name:string}[]>([]);
+ const [roster,setRoster]=useState<{user_id:string;attendance_status:string|null;confirmation_status:string|null;name:string}[]>([]);
  const [rosterError,setRosterError]=useState("");
  const [rosterLoading,setRosterLoading]=useState(false);
  const [attendanceBusy,setAttendanceBusy]=useState<string|null>(null);
  async function openRoster(sessionId:string){
   if(attendanceSession===sessionId){setAttendanceSession(null);return}
   setAttendanceSession(sessionId);setRoster([]);setRosterError("");setRosterLoading(true);
-  const result=await supabase.from("training_session_participants").select("user_id,attendance_status").eq("session_id",sessionId);
+  const result=await supabase.from("training_session_participants").select("user_id,attendance_status,confirmation_status").eq("session_id",sessionId);
   if(result.error){setRosterError(result.error.message);setRosterLoading(false);return}
   const participants=result.data??[];
   const profiles=participants.length?await supabase.from("profiles").select("id,full_name").in("id",participants.map(p=>p.user_id)):null;
   const names=new Map((profiles?.data??[]).map(p=>[p.id,p.full_name]));
-  setRoster(participants.map(p=>({user_id:p.user_id,attendance_status:p.attendance_status,name:names.get(p.user_id)||"Atleta "+p.user_id.slice(0,8)})));
+  setRoster(participants.map(p=>({user_id:p.user_id,attendance_status:p.attendance_status,confirmation_status:p.confirmation_status,name:names.get(p.user_id)||"Atleta "+p.user_id.slice(0,8)})));
   if(profiles?.error)setRosterError("Não foi possível obter alguns nomes: "+profiles.error.message);
   setRosterLoading(false);
  }
@@ -39,12 +39,12 @@ export default function TrainingPage(){
   <button type="button" onClick={()=>void openRoster(s.id)} aria-expanded={attendanceSession===s.id}> {attendanceSession===s.id?"Fechar participantes":"Gerir presenças"}</button>
   {attendanceSession===s.id&&<div>{rosterLoading?<p>A carregar participantes...</p>:<>
    {rosterError&&<p role="alert">{rosterError}</p>}
-   {!roster.length?<p>Sem participantes inscritos ou sem acesso à lista.</p>:<ul>{roster.map(p=><li key={p.user_id}>
-    {p.name} — {p.attendance_status??"Por registar"}{" "}
+   {!roster.length?<p>Sem participantes inscritos ou sem acesso à lista.</p>:<><p role="status">Confirmados: {roster.filter(p=>p.confirmation_status==="confirmed").length} · Indisponíveis: {roster.filter(p=>p.confirmation_status==="declined").length} · Pendentes: {roster.filter(p=>p.confirmation_status!=="confirmed"&&p.confirmation_status!=="declined").length}</p><ul>{roster.map(p=><li key={p.user_id}>
+    {p.name} — {p.confirmation_status==="confirmed"?"Confirmado":p.confirmation_status==="declined"?"Indisponível":"Resposta pendente"} — {p.attendance_status??"Por registar"}{" "}
     <select aria-label={"Presença de "+p.name} value={p.attendance_status??""} disabled={attendanceBusy!==null} onChange={e=>{if(e.target.value)void markAttendance(s.id,p.user_id,e.target.value)}}>
      <option value="">Por registar</option><option value="present">Presente</option><option value="absent">Ausente</option><option value="excused">Falta justificada</option>
     </select>
-   </li>)}</ul>}
+   </li>)}</ul></>}
   </>}</div>}
  </li>;
  const [sessionLoading,setSessionLoading]=useState(true);
