@@ -34,8 +34,41 @@ export default function TrainingPage(){
   else {setRoster(rows=>rows.map(p=>p.user_id===userId?{...p,attendance_status:status}:p));setRevision(v=>v+1)}
   setAttendanceBusy(null);
  }
+ const [editing,setEditing]=useState<{id:string;title:string;start:string;end:string;location:string}|null>(null);
+ const [editBusy,setEditBusy]=useState(false);
+ const [editError,setEditError]=useState("");
+ function localDate(value:string){
+  const d=new Date(value);
+  const pad=(n:number)=>String(n).padStart(2,"0");
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+ }
+ function beginEdit(s:Session){
+  setEditError("");setEditing({id:s.id,title:s.title,start:localDate(s.starts_at),end:localDate(s.ends_at),location:s.location??""});
+ }
+ async function saveEdit(){
+  if(!editing||editBusy)return;
+  const a=new Date(editing.start),b=new Date(editing.end);
+  if(!editing.title.trim()||!Number.isFinite(a.getTime())||!Number.isFinite(b.getTime())||b<=a){setEditError("Verifica o título e os horários.");return}
+  setEditBusy(true);setEditError("");
+  try{
+   const r=await supabase.rpc("edit_training_session",{p_session_id:editing.id,p_title:editing.title.trim(),p_starts_at:a.toISOString(),p_ends_at:b.toISOString(),p_location:editing.location.trim()||null});
+   if(r.error)throw new Error(r.error.message);
+   setEditing(null);setRevision(v=>v+1);
+  }catch(e){setEditError(e instanceof Error?e.message:"Não foi possível editar o treino.")}
+  finally{setEditBusy(false)}
+ }
  const renderCoachedSession=(s:Session)=><li key={s.id}>
   <strong>{s.title}</strong> — {new Date(s.starts_at).toLocaleString("pt-PT")}
+  {s.status==="scheduled"&&<button type="button" disabled={editBusy} onClick={()=>beginEdit(s)}>Editar treino</button>}
+  {editing?.id===s.id&&<form onSubmit={e=>{e.preventDefault();void saveEdit()}}>
+   <fieldset disabled={editBusy}>
+    <label>Título<input required value={editing.title} onChange={e=>setEditing({...editing,title:e.target.value})}/></label>
+    <label>Início<input type="datetime-local" step="1" required value={editing.start} onChange={e=>setEditing({...editing,start:e.target.value})}/></label>
+    <label>Fim<input type="datetime-local" step="1" required value={editing.end} onChange={e=>setEditing({...editing,end:e.target.value})}/></label>
+    <label>Local<input value={editing.location} onChange={e=>setEditing({...editing,location:e.target.value})}/></label>
+    <button type="submit">Guardar alterações</button><button type="button" onClick={()=>setEditing(null)}>Cancelar</button>
+   </fieldset>{editError&&<p role="alert">{editError}</p>}
+  </form>}
   <button type="button" onClick={()=>void openRoster(s.id)} aria-expanded={attendanceSession===s.id}> {attendanceSession===s.id?"Fechar participantes":"Gerir presenças"}</button>
   {attendanceSession===s.id&&<div>{rosterLoading?<p>A carregar participantes...</p>:<>
    {rosterError&&<p role="alert">{rosterError}</p>}
