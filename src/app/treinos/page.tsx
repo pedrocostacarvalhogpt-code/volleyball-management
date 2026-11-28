@@ -57,9 +57,28 @@ export default function TrainingPage(){
   }catch(e){setEditError(e instanceof Error?e.message:"Não foi possível editar o treino.")}
   finally{setEditBusy(false)}
  }
+ const [cancelBusy,setCancelBusy]=useState<string|null>(null);
+ const [cancelFeedback,setCancelFeedback]=useState<Record<string,string>>({});
+ async function cancelTraining(s:Session){
+  if(cancelBusy!==null||editBusy||attendanceBusy!==null||s.status!=="scheduled")return;
+  if(!window.confirm("Cancelar este treino? Os participantes e o histórico serão preservados."))return;
+  setCancelBusy(s.id);setCancelFeedback(prev=>({...prev,[s.id]:""}));
+  try{
+   const r=await supabase.rpc("cancel_training_session",{p_session_id:s.id});
+   if(r.error)throw new Error(r.error.message);
+   setSessions(prev=>prev.map(x=>x.id===s.id?{...x,status:"cancelled"}:x));
+   setEditing(prev=>prev?.id===s.id?null:prev);
+   setCancelFeedback(prev=>({...prev,[s.id]:"Treino cancelado."}));
+   setRevision(v=>v+1);
+  }catch(e){setCancelFeedback(prev=>({...prev,[s.id]:e instanceof Error?e.message:"Não foi possível cancelar o treino."}))}
+  finally{setCancelBusy(null)}
+ }
  const renderCoachedSession=(s:Session)=><li key={s.id}>
   <strong>{s.title}</strong> — {new Date(s.starts_at).toLocaleString("pt-PT")}
-  {s.status==="scheduled"&&<button type="button" disabled={editBusy} onClick={()=>beginEdit(s)}>Editar treino</button>}
+  {s.status==="cancelled"&&<strong> · Cancelado</strong>}
+  {s.status==="scheduled"&&<><button type="button" disabled={editBusy||cancelBusy!==null} onClick={()=>beginEdit(s)}>Editar treino</button>
+  <button type="button" disabled={cancelBusy!==null||editBusy||editing!==null||attendanceBusy!==null} onClick={()=>void cancelTraining(s)}>{cancelBusy===s.id?"A cancelar...":"Cancelar treino"}</button></>}
+  {cancelFeedback[s.id]&&<p role="status">{cancelFeedback[s.id]}</p>}
   {editing?.id===s.id&&<form onSubmit={e=>{e.preventDefault();void saveEdit()}}>
    <fieldset disabled={editBusy}>
     <label>Título<input required value={editing.title} onChange={e=>setEditing({...editing,title:e.target.value})}/></label>
@@ -74,7 +93,7 @@ export default function TrainingPage(){
    {rosterError&&<p role="alert">{rosterError}</p>}
    {!roster.length?<p>Sem participantes inscritos ou sem acesso à lista.</p>:<><p role="status">Confirmados: {roster.filter(p=>p.confirmation_status==="confirmed").length} · Indisponíveis: {roster.filter(p=>p.confirmation_status==="declined").length} · Pendentes: {roster.filter(p=>p.confirmation_status!=="confirmed"&&p.confirmation_status!=="declined").length}</p><ul>{roster.map(p=><li key={p.user_id}>
     {p.name} — {p.confirmation_status==="confirmed"?"Confirmado":p.confirmation_status==="declined"?"Indisponível":"Resposta pendente"} — {p.attendance_status??"Por registar"}{" "}
-    <select aria-label={"Presença de "+p.name} value={p.attendance_status??""} disabled={attendanceBusy!==null} onChange={e=>{if(e.target.value)void markAttendance(s.id,p.user_id,e.target.value)}}>
+    <select aria-label={"Presença de "+p.name} value={p.attendance_status??""} disabled={attendanceBusy!==null||cancelBusy!==null||s.status==="cancelled"} onChange={e=>{if(e.target.value)void markAttendance(s.id,p.user_id,e.target.value)}}>
      <option value="">Por registar</option><option value="present">Presente</option><option value="absent">Ausente</option><option value="excused">Falta justificada</option>
     </select>
    </li>)}</ul></>}
@@ -113,9 +132,9 @@ export default function TrainingPage(){
   }catch(e){setConfirmationFeedback(prev=>({...prev,[sessionId]:e instanceof Error?e.message:"Não foi possível registar a resposta."}));}
   finally{setConfirmationBusy(null);}
  }
- const renderSession=(s:Session)=><li key={s.id}><strong>{s.title}</strong> — {new Date(s.starts_at).toLocaleString("pt-PT")} até {new Date(s.ends_at).toLocaleString("pt-PT")}{s.location?" · "+s.location:""} · {s.status}{participation[s.id]&&<span> · Confirmação: {participation[s.id].confirmation_status??"Pendente"} · Presença: {participation[s.id].attendance_status??"Por registar"}</span>}{participation[s.id]&&<div>
-  <button type="button" disabled={confirmationBusy!==null||participation[s.id].confirmation_status==="confirmed"} onClick={()=>void confirmParticipation(s.id,"confirmed")}>Confirmar participação</button>{" "}
-  <button type="button" disabled={confirmationBusy!==null||participation[s.id].confirmation_status==="declined"} onClick={()=>void confirmParticipation(s.id,"declined")}>Não vou participar</button>
+ const renderSession=(s:Session)=><li key={s.id}><strong>{s.title}</strong> — {new Date(s.starts_at).toLocaleString("pt-PT")} até {new Date(s.ends_at).toLocaleString("pt-PT")}{s.location?" · "+s.location:""} · {s.status==="cancelled"?"Cancelado":s.status}{participation[s.id]&&<span> · Confirmação: {participation[s.id].confirmation_status??"Pendente"} · Presença: {participation[s.id].attendance_status??"Por registar"}</span>}{participation[s.id]&&s.status==="scheduled"&&<div>
+  <button type="button" disabled={cancelBusy!==null||confirmationBusy!==null||participation[s.id].confirmation_status==="confirmed"} onClick={()=>void confirmParticipation(s.id,"confirmed")}>Confirmar participação</button>{" "}
+  <button type="button" disabled={cancelBusy!==null||confirmationBusy!==null||participation[s.id].confirmation_status==="declined"} onClick={()=>void confirmParticipation(s.id,"declined")}>Não vou participar</button>
   {confirmationFeedback[s.id]&&<p role="status">{confirmationFeedback[s.id]}</p>}
  </div>}</li>;
  const coachedSessions=sessions.filter(s=>teams.some(t=>t.id===s.team_id));
